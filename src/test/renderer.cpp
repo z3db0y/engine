@@ -105,7 +105,28 @@ int main()
         return terminate(renderer, 1);
     }
 
-    const VkResult pipelineResult = renderer->createRenderPipeline({});
+    VkShaderModule vertShader;
+    VkShaderModule fragShader;
+
+    std::cout << "vertex shader result: " <<
+        Loaders::loadShaderModule(renderer->vkDev, "../src/test/shaders/compiled/triangle.vert.spv", &vertShader) << '\n';
+
+    std::cout << "fragment shader result: "  <<
+        Loaders::loadShaderModule(renderer->vkDev, "../src/test/shaders/compiled/triangle.frag.spv", &fragShader) << '\n';
+
+    VkPipelineShaderStageCreateInfo vertInfo{};
+    vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertInfo.module = vertShader;
+    vertInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragInfo{};
+    fragInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragInfo.module = fragShader;
+    fragInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragInfo.pName = "main";
+
+    const VkResult pipelineResult = renderer->createRenderPipeline({vertInfo, fragInfo});
 
     if (pipelineResult == VK_SUCCESS)
     {
@@ -119,6 +140,7 @@ int main()
     while (!glfwWindowShouldClose(win))
     {
         glfwPollEvents();
+        renderer->render();
     }
 
     return terminate(renderer, 0);

@@ -8,7 +8,7 @@ class Engine::Renderer
     Game* game;
 
     VkPhysicalDevice vkPhysDev{};
-    VkDevice vkDev{};
+
     VkQueue vkDevQueue{};
     VkQueue vkPresentQueue{};
 
@@ -25,13 +25,22 @@ class Engine::Renderer
     VkPipelineLayout vkLayout{};
     VkPipeline vkPipeline{};
 
+    VkCommandPool vkCmdPool{};
+    VkCommandBuffer vkCmdBuffer{};
+
     std::vector<VkImage> vkImages;
     std::vector<VkImageView> vkImageViews;
+    std::vector<VkFramebuffer> vkFramebuffers;
 
     VkResult createImageViews();
+    VkResult createFramebuffers();
     VkResult createRenderPass();
+
+    VkResult recordCommandBuffer(uint32_t imageIndex);
 public:
     VkInstance vkInst{};
+    VkDevice vkDev{};
+
     VkPresentModeKHR preferredPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
 
     explicit Renderer(Game* game);
@@ -42,6 +51,7 @@ public:
     void cleanupSwapchain();
 
     VkResult createRenderPipeline(std::vector<VkPipelineShaderStageCreateInfo> shaders);
+    void render();
 
     ~Renderer();
 };

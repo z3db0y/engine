@@ -146,7 +146,24 @@ VkResult Engine::Renderer::createDevice(VkSurfaceKHR surface)
     this->vkPhysDev = physDevice->second;
     this->vkSurface = surface;
 
-    return VK_SUCCESS;
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = familyIndices.graphicsFamily.value();
+
+    VkResult cmdPoolResult = vkCreateCommandPool(this->vkDev, &poolInfo, nullptr, &this->vkCmdPool);
+
+    if (cmdPoolResult != VK_SUCCESS)
+    {
+        return cmdPoolResult;
+    }
+
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = this->vkCmdPool;
+    allocInfo.commandBufferCount = 1;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    return vkAllocateCommandBuffers(this->vkDev, &allocInfo, &this->vkCmdBuffer);
 }
 
 VkResult Engine::Renderer::createSwapchain(const uint32_t width, const uint32_t height)
@@ -271,6 +288,36 @@ VkResult Engine::Renderer::createRenderPass()
     return vkCreateRenderPass(this->vkDev, &renderPassInfo, nullptr, &this->vkRenderPass);
 }
 
+VkResult Engine::Renderer::createFramebuffers()
+{
+    this->vkFramebuffers.resize(this->vkImageViews.size());
+
+    uint32_t i = 0;
+    for (const auto& imageView : this->vkImageViews)
+    {
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = this->vkRenderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = &imageView;
+        framebufferInfo.width = this->vkExtent.width;
+        framebufferInfo.height = this->vkExtent.height;
+        framebufferInfo.layers = 1;
+
+        VkResult result = vkCreateFramebuffer(this->vkDev, &framebufferInfo, nullptr, &this->vkFramebuffers[i]);
+
+        if (result != VK_SUCCESS)
+        {
+            return result;
+        }
+
+        i++;
+    }
+
+    return VK_SUCCESS;
+}
+
+
 VkResult Engine::Renderer::createRenderPipeline(std::vector<VkPipelineShaderStageCreateInfo> shaders)
 {
     // TODO: revisit & configure
@@ -294,12 +341,6 @@ VkResult Engine::Renderer::createRenderPipeline(std::vector<VkPipelineShaderStag
     dynState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynState.dynamicStateCount = static_cast<uint32_t>(dynStates.size());
     dynState.pDynamicStates = dynStates.data();
-
-    this->vkViewport.width = static_cast<float>(this->vkExtent.width);
-    this->vkViewport.height = static_cast<float>(this->vkExtent.height);
-
-    this->vkScissor.offset = {0, 0};
-    this->vkScissor.extent = this->vkExtent;
 
     VkPipelineViewportStateCreateInfo viewportState{};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -363,6 +404,13 @@ VkResult Engine::Renderer::createRenderPipeline(std::vector<VkPipelineShaderStag
         return renderPassResult;
     }
 
+    VkResult fbResult = this->createFramebuffers();
+
+    if (fbResult != VK_SUCCESS)
+    {
+        return fbResult;
+    }
+
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
@@ -387,20 +435,84 @@ VkResult Engine::Renderer::createRenderPipeline(std::vector<VkPipelineShaderStag
         &this->vkPipeline);
 }
 
+VkResult Engine::Renderer::recordCommandBuffer(uint32_t imageIndex)
+{
+    VkCommandBufferBeginInfo bufBeginInfo{};
+    bufBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+    VkResult result = vkBeginCommandBuffer(this->vkCmdBuffer, &bufBeginInfo);
+
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    VkRenderPassBeginInfo passBeginInfo{};
+    passBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    passBeginInfo.framebuffer = this->vkFramebuffers[imageIndex];
+    passBeginInfo.renderPass = this->vkRenderPass;
+
+    passBeginInfo.renderArea.offset = {0, 0};
+    passBeginInfo.renderArea.extent = this->vkExtent;
+
+    constexpr VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    passBeginInfo.clearValueCount = 1;
+    passBeginInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(this->vkCmdBuffer, &passBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(this->vkCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, this->vkPipeline);
+
+    this->vkViewport.x = 0.0f;
+    this->vkViewport.y = 0.0f;
+
+    this->vkViewport.width = static_cast<float>(this->vkExtent.width);
+    this->vkViewport.height = static_cast<float>(this->vkExtent.height);
+
+    this->vkViewport.minDepth = 0.0f;
+    this->vkViewport.maxDepth = 1.0f;
+
+    vkCmdSetViewport(this->vkCmdBuffer, 0, 1, &this->vkViewport);
+
+    this->vkScissor.offset = {0, 0};
+    this->vkScissor.extent = this->vkExtent;
+
+    vkCmdSetScissor(this->vkCmdBuffer, 0, 1, &this->vkScissor);
+
+    // TODO: actually count vertices????????????
+    vkCmdDraw(this->vkCmdBuffer, 3, 1, 0, 0);
+    vkCmdEndRenderPass(this->vkCmdBuffer);
+
+    return vkEndCommandBuffer(this->vkCmdBuffer);
+}
+
+void Engine::Renderer::render()
+{
+
+}
+
+
 void Engine::Renderer::cleanupSwapchain()
 {
     if (this->vkSwapchain != VK_NULL_HANDLE)
     {
+        if (this->vkRenderPass != VK_NULL_HANDLE)
+        {
+            for (const auto& framebuffer : this->vkFramebuffers)
+            {
+                vkDestroyFramebuffer(this->vkDev, framebuffer, nullptr);
+            }
+
+            this->vkFramebuffers.resize(0);
+        }
+
         for (const auto& imageView : this->vkImageViews)
         {
-            if (imageView != VK_NULL_HANDLE)
-            {
-                vkDestroyImageView(this->vkDev, imageView, nullptr);
-            }
+            vkDestroyImageView(this->vkDev, imageView, nullptr);
         }
 
         vkDestroySwapchainKHR(this->vkDev, this->vkSwapchain, nullptr);
         this->vkSwapchain = VK_NULL_HANDLE;
+        this->vkImageViews.resize(0);
     }
 }
 

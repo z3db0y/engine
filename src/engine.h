@@ -29,3 +29,4 @@ namespace Engine
 
 #include "core/game.h"
 #include "core/renderer.h"
+#include "loaders/loaders.h"
