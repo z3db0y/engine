@@ -105,6 +105,17 @@ int main()
         return terminate(renderer, 1);
     }
 
+    const VkResult pipelineResult = renderer->createRenderPipeline({});
+
+    if (pipelineResult == VK_SUCCESS)
+    {
+        std::cout << "created pipeline successfully!" << '\n';
+    } else
+    {
+        std::cerr << "failed to create pipeline (" << pipelineResult << ')' << '\n';
+        return terminate(renderer, 1);
+    }
+
     while (!glfwWindowShouldClose(win))
     {
         glfwPollEvents();

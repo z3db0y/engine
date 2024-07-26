@@ -18,15 +18,18 @@ class Engine::Renderer
     VkSwapchainKHR vkSwapchain{};
     VkSurfaceKHR vkSurface{};
 
-    VkViewport vkViewport;
-    VkRect2D vkScissor;
+    VkViewport vkViewport{};
+    VkRect2D vkScissor{};
 
-    VkPipelineLayout vkLayout;
+    VkRenderPass vkRenderPass{};
+    VkPipelineLayout vkLayout{};
+    VkPipeline vkPipeline{};
 
     std::vector<VkImage> vkImages;
     std::vector<VkImageView> vkImageViews;
 
     VkResult createImageViews();
+    VkResult createRenderPass();
 public:
     VkInstance vkInst{};
     VkPresentModeKHR preferredPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
@@ -38,7 +41,7 @@ public:
     VkResult createSwapchain(uint32_t width, uint32_t height);
     void cleanupSwapchain();
 
-    void createRenderPipeline();
+    VkResult createRenderPipeline(std::vector<VkPipelineShaderStageCreateInfo> shaders);
 
     ~Renderer();
 };

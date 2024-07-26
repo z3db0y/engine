@@ -5,7 +5,6 @@
 #include <cstring>
 #include <map>
 #include <vector>
-#include <bits/stl_algo.h>
 
 #include "helpers/vkSwapchain.h"
 #include "helpers/vkVLayers.h"
@@ -138,9 +137,6 @@ VkResult Engine::Renderer::createDevice(VkSurfaceKHR surface)
 
     if (devCreateResult != VK_SUCCESS)
     {
-        vkDestroyInstance(this->vkInst, nullptr);
-        this->vkInst = VK_NULL_HANDLE;
-
         return devCreateResult;
     }
 
@@ -241,8 +237,54 @@ VkResult Engine::Renderer::createImageViews()
     return VK_SUCCESS;
 }
 
-void Engine::Renderer::createRenderPipeline()
+VkResult Engine::Renderer::createRenderPass()
 {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = this->vkFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference attachmentRef{};
+    attachmentRef.attachment = 0;
+    attachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &attachmentRef;
+
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    return vkCreateRenderPass(this->vkDev, &renderPassInfo, nullptr, &this->vkRenderPass);
+}
+
+VkResult Engine::Renderer::createRenderPipeline(std::vector<VkPipelineShaderStageCreateInfo> shaders)
+{
+    // TODO: revisit & configure
+
+    VkPipelineVertexInputStateCreateInfo vertexInfo{};
+    vertexInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInfo.vertexBindingDescriptionCount = 0;
+    vertexInfo.vertexAttributeDescriptionCount = 0;
+
+    VkPipelineInputAssemblyStateCreateInfo assembly{};
+    assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    assembly.primitiveRestartEnable = VK_FALSE;
+
     std::vector dynStates = {
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR
@@ -252,6 +294,12 @@ void Engine::Renderer::createRenderPipeline()
     dynState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynState.dynamicStateCount = static_cast<uint32_t>(dynStates.size());
     dynState.pDynamicStates = dynStates.data();
+
+    this->vkViewport.width = static_cast<float>(this->vkExtent.width);
+    this->vkViewport.height = static_cast<float>(this->vkExtent.height);
+
+    this->vkScissor.offset = {0, 0};
+    this->vkScissor.extent = this->vkExtent;
 
     VkPipelineViewportStateCreateInfo viewportState{};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -303,6 +351,40 @@ void Engine::Renderer::createRenderPipeline()
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
     VkResult layoutResult = vkCreatePipelineLayout(this->vkDev, &layoutInfo, nullptr, &this->vkLayout);
+    VkResult renderPassResult = this->createRenderPass();
+
+    if (layoutResult != VK_SUCCESS)
+    {
+        return layoutResult;
+    }
+
+    if (renderPassResult != VK_SUCCESS)
+    {
+        return renderPassResult;
+    }
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+
+    pipelineInfo.stageCount = static_cast<uint32_t>(shaders.size());
+    pipelineInfo.pStages = shaders.data();
+
+    pipelineInfo.pVertexInputState = &vertexInfo;
+    pipelineInfo.pInputAssemblyState = &assembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = nullptr;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynState;
+
+    return vkCreateGraphicsPipelines(
+        this->vkDev,
+        VK_NULL_HANDLE,
+        1,
+        &pipelineInfo,
+        nullptr,
+        &this->vkPipeline);
 }
 
 void Engine::Renderer::cleanupSwapchain()
@@ -325,6 +407,24 @@ void Engine::Renderer::cleanupSwapchain()
 Engine::Renderer::~Renderer()
 {
     this->cleanupSwapchain();
+
+    if (this->vkPipeline != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(this->vkDev, this->vkPipeline, nullptr);
+        this->vkPipeline = VK_NULL_HANDLE;
+    }
+
+    if (this->vkLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(this->vkDev, this->vkLayout, nullptr);
+        this->vkLayout = VK_NULL_HANDLE;
+    }
+
+    if (this->vkRenderPass != VK_NULL_HANDLE)
+    {
+        vkDestroyRenderPass(this->vkDev, this->vkRenderPass, nullptr);
+        this->vkRenderPass = VK_NULL_HANDLE;
+    }
 
     if (this->vkDev != VK_NULL_HANDLE)
     {
