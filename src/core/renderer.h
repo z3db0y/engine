@@ -18,6 +18,11 @@ class Engine::Renderer
     VkSwapchainKHR vkSwapchain{};
     VkSurfaceKHR vkSurface{};
 
+    VkViewport vkViewport;
+    VkRect2D vkScissor;
+
+    VkPipelineLayout vkLayout;
+
     std::vector<VkImage> vkImages;
     std::vector<VkImageView> vkImageViews;
 
@@ -31,7 +36,9 @@ public:
     VkResult createDevice(VkSurfaceKHR surface);
 
     VkResult createSwapchain(uint32_t width, uint32_t height);
-    void destroySwapchain();
+    void cleanupSwapchain();
+
+    void createRenderPipeline();
 
     ~Renderer();
 };

@@ -17,6 +17,9 @@ set(SOURCES
         src/helpers/vkVLayers.h
         src/helpers/vkSwapchain.h
         src/helpers/vkSwapchain.cpp
+        src/loaders/loaders.h
+        src/loaders/shader.cpp
+        src/loaders/loaders.cpp
 )
 
 add_library(engine SHARED ${SOURCES})
