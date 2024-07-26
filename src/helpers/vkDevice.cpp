@@ -25,7 +25,7 @@ uint32_t deviceScore(VkPhysicalDevice dev, VkSurfaceKHR surface)
     score += props.limits.maxImageDimension3D;
 
     VkQueueIndices indices = vkQueueIndices(dev, surface);
-    VkSwapChainDetails swapChain = querySwapChain(dev, surface);
+    VkSwapChainDetails swapChain = vkQuerySwapchain(dev, surface);
 
     bool extensionSupport = deviceSupportsExtensions(dev);
 

@@ -2,6 +2,7 @@
 #include <vector>
 
 #ifdef HAS_VULKAN
+#include "engine.h"
 #include <vulkan/vulkan.h>
 
 struct VkSwapChainDetails
@@ -16,6 +17,8 @@ struct VkSwapChainDetails
     }
 };
 
-VkSwapChainDetails querySwapChain(VkPhysicalDevice dev, VkSurfaceKHR surface);
+VkSwapChainDetails vkQuerySwapchain(VkPhysicalDevice dev, VkSurfaceKHR surface);
+void vkSetupSwapchainCreateInfo(Engine::Renderer* renderer, VkSwapchainCreateInfoKHR& createInfo, VkSwapChainDetails& details);
+void vkGetSwapchainImages(VkDevice dev, VkSwapchainKHR swapchain, std::vector<VkImage>* images);
 
 #endif

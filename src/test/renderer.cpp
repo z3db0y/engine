@@ -43,6 +43,7 @@ int main()
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     uint32_t nExtensions;
     const char* const* extensions = glfwGetRequiredInstanceExtensions(&nExtensions);
@@ -62,7 +63,10 @@ int main()
         return terminate(renderer, 1);
     }
 
-    GLFWwindow* win = glfwCreateWindow(640, 480, "Test", nullptr, nullptr);
+    constexpr int width = 640;
+    constexpr int height = 480;
+
+    GLFWwindow* win = glfwCreateWindow(width, height, "Test", nullptr, nullptr);
 
     if (win == nullptr)
     {
@@ -87,6 +91,17 @@ int main()
     } else
     {
         std::cerr << "failed to create device (" << devResult << ')' << '\n';
+        return terminate(renderer, 1);
+    }
+
+    const VkResult swapchainResult = renderer->createSwapchain(width, height);
+
+    if (swapchainResult == VK_SUCCESS)
+    {
+        std::cout << "created swapchain successfully!" << '\n';
+    } else
+    {
+        std::cerr << "failed to create swapchain (" << swapchainResult << ')' << '\n';
         return terminate(renderer, 1);
     }
 

@@ -1,13 +1,14 @@
 #include "renderer.h"
 
-#include "helpers/vkVLayers.h"
-
 #ifdef HAS_VULKAN
 
 #include <cstring>
 #include <map>
 #include <vector>
+#include <bits/stl_algo.h>
 
+#include "helpers/vkSwapchain.h"
+#include "helpers/vkVLayers.h"
 #include "helpers/vkDevice.h"
 #include "helpers/vkIndices.h"
 #include "game.h"
@@ -145,17 +146,137 @@ VkResult Engine::Renderer::createDevice(VkSurfaceKHR surface)
 
     vkGetDeviceQueue(this->vkDev, familyIndices.graphicsFamily.value(), 0, &this->vkDevQueue);
     vkGetDeviceQueue(this->vkDev, familyIndices.presentFamily.value(), 0, &this->vkPresentQueue);
+
+    this->vkPhysDev = physDevice->second;
+    this->vkSurface = surface;
+
     return VK_SUCCESS;
+}
+
+VkResult Engine::Renderer::createSwapchain(const uint32_t width, const uint32_t height)
+{
+    if (this->vkInst == VK_NULL_HANDLE || this->vkDev == VK_NULL_HANDLE)
+    {
+        return VK_ERROR_UNKNOWN;
+    }
+
+    VkSwapchainCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    createInfo.surface = this->vkSurface;
+
+    VkQueueIndices queueIndices = vkQueueIndices(this->vkPhysDev, this->vkSurface);
+    uint32_t queueIndexArr[] = {queueIndices.graphicsFamily.value(), queueIndices.presentFamily.value()};
+
+    if (queueIndices.graphicsFamily != queueIndices.presentFamily)
+    {
+        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        createInfo.queueFamilyIndexCount = 2;
+        createInfo.pQueueFamilyIndices = queueIndexArr;
+    } else
+    {
+        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    }
+
+    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    createInfo.clipped = VK_TRUE;
+
+    createInfo.imageExtent = {width, height};
+
+    VkSwapChainDetails swapChainDetails = vkQuerySwapchain(this->vkPhysDev, this->vkSurface);
+    vkSetupSwapchainCreateInfo(this, createInfo, swapChainDetails);
+
+    // TODO: resizing;
+    // "This is a complex topic that we'll learn more about in a future chapter.
+    // For now we'll assume that we'll only ever create one swap chain."
+    //      - vulkan-tutorial.com
+    createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+    this->vkFormat = createInfo.imageFormat;
+    this->vkExtent = createInfo.imageExtent;
+
+    VkResult result = vkCreateSwapchainKHR(this->vkDev, &createInfo, nullptr, &this->vkSwapchain);
+
+    if (result == VK_SUCCESS)
+    {
+        vkGetSwapchainImages(this->vkDev, this->vkSwapchain, &this->vkImages);
+        return this->createImageViews();
+    }
+
+    return result;
+}
+
+VkResult Engine::Renderer::createImageViews()
+{
+    // I'm kinda lost atp, but trust the process
+    // will move into 3D later
+
+    this->vkImageViews.resize(this->vkImages.size());
+    uint32_t i = 0;
+
+    for (const auto& image : this->vkImages)
+    {
+        VkImageViewCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.image = image;
+
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        createInfo.format = this->vkFormat;
+
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+
+        VkResult result = vkCreateImageView(this->vkDev, &createInfo, nullptr, &this->vkImageViews[i]);
+
+        if (result != VK_SUCCESS) return result;
+        i++;
+    }
+
+    return VK_SUCCESS;
+}
+
+void Engine::Renderer::destroySwapchain()
+{
+    if (this->vkSwapchain != VK_NULL_HANDLE)
+    {
+        for (const auto& imageView : this->vkImageViews)
+        {
+            if (imageView != VK_NULL_HANDLE)
+            {
+                vkDestroyImageView(this->vkDev, imageView, nullptr);
+            }
+        }
+
+        vkDestroySwapchainKHR(this->vkDev, this->vkSwapchain, nullptr);
+        this->vkSwapchain = VK_NULL_HANDLE;
+    }
 }
 
 Engine::Renderer::~Renderer()
 {
+    this->destroySwapchain();
+
     if (this->vkDev != VK_NULL_HANDLE)
     {
         vkDestroyDevice(this->vkDev, nullptr);
 
+        this->vkPresentQueue = VK_NULL_HANDLE;
         this->vkDevQueue = VK_NULL_HANDLE;
+
+        this->vkPhysDev = VK_NULL_HANDLE;
         this->vkDev = VK_NULL_HANDLE;
+    }
+
+    if (this->vkSurface != VK_NULL_HANDLE)
+    {
+        vkDestroySurfaceKHR(this->vkInst, this->vkSurface, nullptr);
+        this->vkSurface = VK_NULL_HANDLE;
     }
 
     if (this->vkInst != VK_NULL_HANDLE)
