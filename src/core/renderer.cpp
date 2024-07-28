@@ -140,7 +140,7 @@ VkResult Engine::Renderer::createDevice(VkSurfaceKHR surface)
         return devCreateResult;
     }
 
-    vkGetDeviceQueue(this->vkDev, familyIndices.graphicsFamily.value(), 0, &this->vkDevQueue);
+    vkGetDeviceQueue(this->vkDev, familyIndices.graphicsFamily.value(), 0, &this->vkGraphicsQueue);
     vkGetDeviceQueue(this->vkDev, familyIndices.presentFamily.value(), 0, &this->vkPresentQueue);
 
     this->vkPhysDev = physDevice->second;
@@ -223,6 +223,9 @@ VkResult Engine::Renderer::createImageViews()
     // I'm kinda lost atp, but trust the process
     // will move into 3D later
 
+    // to past self ^^: you had no clue what you were
+    // talking about, didn't you?
+
     this->vkImageViews.resize(this->vkImages.size());
     uint32_t i = 0;
 
@@ -285,6 +288,20 @@ VkResult Engine::Renderer::createRenderPass()
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
 
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+
+    // i'm actually so fucking lost rn
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+
     return vkCreateRenderPass(this->vkDev, &renderPassInfo, nullptr, &this->vkRenderPass);
 }
 
@@ -317,6 +334,28 @@ VkResult Engine::Renderer::createFramebuffers()
     return VK_SUCCESS;
 }
 
+VkResult Engine::Renderer::createSyncObjects()
+{
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    VkResult result;
+
+    if (
+        (result = vkCreateSemaphore(this->vkDev, &semaphoreInfo, nullptr, &this->imageAvailableSemaphore)) != VK_SUCCESS ||
+        (result = vkCreateSemaphore(this->vkDev, &semaphoreInfo, nullptr, &this->renderFinishedSemaphore)) != VK_SUCCESS ||
+        (result = vkCreateFence(this->vkDev, &fenceInfo, nullptr, &this->inFlightFence)) != VK_SUCCESS)
+    {
+        return result;
+    }
+
+
+    return VK_SUCCESS;
+}
 
 VkResult Engine::Renderer::createRenderPipeline(std::vector<VkPipelineShaderStageCreateInfo> shaders)
 {
@@ -411,6 +450,13 @@ VkResult Engine::Renderer::createRenderPipeline(std::vector<VkPipelineShaderStag
         return fbResult;
     }
 
+    VkResult syncObjsResult = this->createSyncObjects();
+
+    if (syncObjsResult != VK_SUCCESS)
+    {
+        return syncObjsResult;
+    }
+
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
@@ -485,9 +531,48 @@ VkResult Engine::Renderer::recordCommandBuffer(uint32_t imageIndex)
     return vkEndCommandBuffer(this->vkCmdBuffer);
 }
 
-void Engine::Renderer::render()
+VkResult Engine::Renderer::render()
 {
+    vkWaitForFences(this->vkDev, 1, &this->inFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(this->vkDev, 1, &this->inFlightFence);
 
+    uint32_t imageIndex;
+    vkAcquireNextImageKHR(this->vkDev, this->vkSwapchain, UINT64_MAX, this->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+    vkResetCommandBuffer(this->vkCmdBuffer, 0);
+    this->recordCommandBuffer(imageIndex);
+
+    VkSubmitInfo submitInfo{};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &this->imageAvailableSemaphore;
+    submitInfo.pWaitDstStageMask = waitStages;
+
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &this->vkCmdBuffer;
+
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &this->renderFinishedSemaphore;
+
+    VkResult result = vkQueueSubmit(this->vkGraphicsQueue, 1, &submitInfo, this->inFlightFence);
+
+    if (result != VK_SUCCESS)
+    {
+        return result;
+    }
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = &this->imageAvailableSemaphore;
+
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &this->vkSwapchain;
+    presentInfo.pImageIndices = &imageIndex;
+
+    return vkQueuePresentKHR(this->vkPresentQueue, &presentInfo);
 }
 
 
@@ -520,6 +605,17 @@ Engine::Renderer::~Renderer()
 {
     this->cleanupSwapchain();
 
+    if (this->inFlightFence != VK_NULL_HANDLE)
+    {
+        vkDestroySemaphore(this->vkDev, this->imageAvailableSemaphore, nullptr);
+        vkDestroySemaphore(this->vkDev, this->renderFinishedSemaphore, nullptr);
+        vkDestroyFence(this->vkDev, this->inFlightFence, nullptr);
+
+        this->imageAvailableSemaphore = VK_NULL_HANDLE;
+        this->renderFinishedSemaphore = VK_NULL_HANDLE;
+        this->inFlightFence = VK_NULL_HANDLE;
+    }
+
     if (this->vkPipeline != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(this->vkDev, this->vkPipeline, nullptr);
@@ -543,7 +639,7 @@ Engine::Renderer::~Renderer()
         vkDestroyDevice(this->vkDev, nullptr);
 
         this->vkPresentQueue = VK_NULL_HANDLE;
-        this->vkDevQueue = VK_NULL_HANDLE;
+        this->vkGraphicsQueue = VK_NULL_HANDLE;
 
         this->vkPhysDev = VK_NULL_HANDLE;
         this->vkDev = VK_NULL_HANDLE;

@@ -61,12 +61,20 @@ void vkSetupSwapchainCreateInfo(Engine::Renderer* renderer, VkSwapchainCreateInf
         }
     }
 
+    uint32_t imageCount = details.capabilities.minImageCount + 1;
+
+    if (imageCount > details.capabilities.maxImageCount && details.capabilities.maxImageCount > 0)
+    {
+        imageCount = details.capabilities.maxImageCount;
+    }
+
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.presentMode = presentMode;
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     createInfo.preTransform = details.capabilities.currentTransform;
+    createInfo.minImageCount = imageCount;
 }
 
 void vkGetSwapchainImages(VkDevice dev, VkSwapchainKHR swapchain, std::vector<VkImage>* images)

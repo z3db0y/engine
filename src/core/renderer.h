@@ -7,26 +7,30 @@ class Engine::Renderer
 {
     Game* game;
 
-    VkPhysicalDevice vkPhysDev{};
+    VkPhysicalDevice vkPhysDev = VK_NULL_HANDLE;
 
-    VkQueue vkDevQueue{};
-    VkQueue vkPresentQueue{};
+    VkQueue vkGraphicsQueue = VK_NULL_HANDLE;
+    VkQueue vkPresentQueue = VK_NULL_HANDLE;
 
     VkFormat vkFormat{};
     VkExtent2D vkExtent{};
 
-    VkSwapchainKHR vkSwapchain{};
-    VkSurfaceKHR vkSurface{};
+    VkSwapchainKHR vkSwapchain = VK_NULL_HANDLE;
+    VkSurfaceKHR vkSurface = VK_NULL_HANDLE;
 
     VkViewport vkViewport{};
     VkRect2D vkScissor{};
 
-    VkRenderPass vkRenderPass{};
-    VkPipelineLayout vkLayout{};
-    VkPipeline vkPipeline{};
+    VkRenderPass vkRenderPass = VK_NULL_HANDLE;
+    VkPipelineLayout vkLayout = VK_NULL_HANDLE;
+    VkPipeline vkPipeline = VK_NULL_HANDLE;
 
-    VkCommandPool vkCmdPool{};
-    VkCommandBuffer vkCmdBuffer{};
+    VkCommandPool vkCmdPool = VK_NULL_HANDLE;
+    VkCommandBuffer vkCmdBuffer = VK_NULL_HANDLE;
+
+    VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
+    VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
+    VkFence inFlightFence = VK_NULL_HANDLE;
 
     std::vector<VkImage> vkImages;
     std::vector<VkImageView> vkImageViews;
@@ -34,12 +38,13 @@ class Engine::Renderer
 
     VkResult createImageViews();
     VkResult createFramebuffers();
+    VkResult createSyncObjects();
     VkResult createRenderPass();
 
     VkResult recordCommandBuffer(uint32_t imageIndex);
 public:
-    VkInstance vkInst{};
-    VkDevice vkDev{};
+    VkInstance vkInst = VK_NULL_HANDLE;
+    VkDevice vkDev = VK_NULL_HANDLE;
 
     VkPresentModeKHR preferredPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
 
@@ -51,7 +56,7 @@ public:
     void cleanupSwapchain();
 
     VkResult createRenderPipeline(std::vector<VkPipelineShaderStageCreateInfo> shaders);
-    void render();
+    VkResult render();
 
     ~Renderer();
 };
