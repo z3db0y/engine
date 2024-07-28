@@ -603,6 +603,11 @@ void Engine::Renderer::cleanupSwapchain()
 
 Engine::Renderer::~Renderer()
 {
+    if (this->vkDev != VK_NULL_HANDLE)
+    {
+        vkDeviceWaitIdle(this->vkDev);
+    }
+
     this->cleanupSwapchain();
 
     if (this->inFlightFence != VK_NULL_HANDLE)
